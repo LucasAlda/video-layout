@@ -7,35 +7,31 @@ export type Layout = {
 
 const ASPECT_RATIO = 16 / 9;
 
-// layouts from one column to "numOfVideos" columns with their needed rows
-const getViableLayouts = (numOfVideos: number): Layout[] => {
-  return Array(numOfVideos)
-    .fill(null)
-    .map((_, i) => {
-      return { cols: i + 1, rows: Math.ceil(numOfVideos / (i + 1)) };
-    });
-};
-
-const getAspectRatio = (layout: Layout) =>
-  (layout.cols / layout.rows) * ASPECT_RATIO;
-
 // returns the video width relative to the container width (0 < videoWidth < 1)
 const getVideoWidth = (layout: Layout, width: number, height: number) => {
-  const layoutAspectRatio = getAspectRatio(layout);
-
-  const containerAspectRatio = width / height;
-
   // layout is wider   =>  width is the limited direction and height has extra room
   // layout is taller  =>  height is the limited direction and width has extra room
-  let videoWidth = 0;
-  if (layoutAspectRatio > containerAspectRatio) {
-    videoWidth = width / layout.cols;
-  } else {
-    const videoHeight = height / layout.rows;
-    videoWidth = videoHeight * ASPECT_RATIO;
-  }
 
-  return videoWidth;
+  return Math.min(width / layout.cols, height / layout.rows * ASPECT_RATIO);
+};
+
+// gets one of the two layouts depending on passed function, one of which is guaranteed to be the optimal one
+const getLayout = (
+  numOfVideos: number,
+  containerWidth: number,
+  containerHeight: number,
+  func: Math["ceil"] | Math["floor"]
+) => {
+  const containerAspectRatio =  containerWidth/containerHeight;
+  const cols = func(
+    Math.sqrt((numOfVideos * containerAspectRatio) / ASPECT_RATIO)
+  );
+
+  const rows = Math.ceil(numOfVideos / cols);
+
+  const width = getVideoWidth({ cols, rows }, containerWidth, containerHeight);
+
+  return { layout: { cols, rows }, maxWidth: width };
 };
 
 type Props = {
@@ -51,24 +47,16 @@ export const useBestLayout = () => {
 
   const calculateLayout = useCallback(
     ({ numOfVideos, width, height }: Props) => {
-      const viableLayouts = getViableLayouts(numOfVideos);
+      if (!numOfVideos) return [null, null];
 
-      let bestLayout = viableLayouts[0];
-      if (!bestLayout) return [null, null];
+      const maxColumnsLayout = getLayout(numOfVideos, width, height, Math.ceil);
+      const minColumnsLayout = getLayout(numOfVideos, width, height, Math.floor);
 
-      let biggestVideoWidth = getVideoWidth(bestLayout, width, height);
+      let bestLayoutParams = maxColumnsLayout;
+      if (maxColumnsLayout.maxWidth < minColumnsLayout.maxWidth) bestLayoutParams = minColumnsLayout;
 
-      viableLayouts.forEach((layout) => {
-        const videoWidth = getVideoWidth(layout, width, height);
-
-        if (videoWidth > biggestVideoWidth) {
-          biggestVideoWidth = videoWidth;
-          bestLayout = layout;
-        }
-      });
-
-      setLayout(bestLayout);
-      setVideoWidth(biggestVideoWidth);
+      setLayout(bestLayoutParams.layout);
+      setVideoWidth(bestLayoutParams.maxWidth);
       setLayoutValidity(true);
     },
     []
