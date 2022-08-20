@@ -7,6 +7,7 @@ import {
   FiMessageSquare,
   FiMicOff,
   FiMonitor,
+  FiMoreVertical,
   FiPhoneOff,
   FiSliders,
   FiTrash,
@@ -15,34 +16,62 @@ import {
   FiVideoOff,
 } from "react-icons/fi";
 import { twMerge } from "tailwind-merge";
-import { getBestLayout } from "../get-best-layout";
-import { useRandomUsers } from "../use-random-users";
+import { useBestLayout } from "../use-best-layout";
+import { User, useRandomUsers } from "../use-random-users";
 
 const Home: NextPage = () => {
-  const { users, removeUser, addUser } = useRandomUsers(5);
-  const [size, setSize] = useState({ width: 0, height: 0 });
+  const { users, removeUser, addUser: addUserFn } = useRandomUsers(5);
+  const [isUsersListOpen, setIsUserListOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const [debugMode, setDebugMode] = useState(false);
   const videoContainer = useRef<HTMLDivElement>(null);
 
-  const toggleDebugMode = () => setDebugMode(!debugMode);
+  const { layout, videoWidth, isLayoutValid, invalidate, calculateLayout } =
+    useBestLayout();
 
-  const [layout, widthPercentage] = getBestLayout(
-    users.length,
-    size.width / size.height
-  );
+  const toggleDebugMode = () => setDebugMode((prev) => !prev);
+
+  const addUser = () => {
+    const sizes = videoContainer.current?.getBoundingClientRect();
+    addUserFn();
+
+    if (sizes) {
+      calculateLayout({
+        width: sizes.width,
+        height: sizes.height,
+        numOfVideos: users.length + 1,
+      });
+    }
+  };
+
+  const toggleUserList = () => {
+    setIsUserListOpen((prev) => !prev);
+    if (!isChatOpen) {
+      invalidate();
+    }
+  };
+
+  const toggleChat = () => {
+    setIsChatOpen((prev) => !prev);
+    if (!isUsersListOpen) {
+      invalidate();
+    }
+  };
 
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => {
-      setSize({
-        height: entry?.contentRect.height || 1,
-        width: entry?.contentRect.width || 1,
+      if (!entry) return;
+      calculateLayout({
+        width: entry.contentRect.width,
+        height: entry.contentRect.height,
+        numOfVideos: users.length,
       });
     });
 
     if (videoContainer.current) observer.observe(videoContainer.current);
 
     return () => observer.disconnect();
-  }, []);
+  }, [users.length, calculateLayout]);
 
   return (
     <>
@@ -52,41 +81,133 @@ const Home: NextPage = () => {
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
-      <main className="flex h-screen w-screen flex-col bg-transparent">
-        <div
-          className="flex w-full flex-grow flex-col items-center justify-center"
-          ref={videoContainer}
-          style={{ border: debugMode ? "1px solid red" : "none" }}
-        >
-          {layout && widthPercentage && (
-            <div
-              className="absolute flex flex-wrap items-center justify-center"
-              style={{ width: widthPercentage * size.width * layout.cols }}
-            >
-              {users.map((user) => (
-                <Video
-                  onClick={() => removeUser(user.name)}
-                  user={user}
-                  key={user.name}
-                  style={{
-                    width: (widthPercentage ?? 0.5) * size.width,
-                    border: debugMode ? "1px solid green" : "none",
-                  }}
-                />
-              ))}
-            </div>
+      <div className="h-screen w-screen flex-col bg-transparent">
+        <main className="flex" style={{ height: "calc(100% - 70px)" }}>
+          <section
+            className="flex h-full w-full flex-col items-center justify-center"
+            ref={videoContainer}
+            style={{ border: debugMode ? "1px solid red" : "none" }}
+          >
+            {layout && videoWidth && (
+              <div
+                className="absolute flex flex-wrap items-center justify-center"
+                style={{
+                  width: videoWidth * layout.cols,
+                }}
+              >
+                {users.map((user) => (
+                  <Video
+                    onClick={() => removeUser(user.name)}
+                    user={user}
+                    key={user.name}
+                    style={{
+                      display: isLayoutValid ? "block" : "none",
+                      width: videoWidth ?? 0.5,
+                      border: debugMode ? "1px solid green" : "none",
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+          {(isUsersListOpen || isChatOpen) && (
+            <Menu
+              users={users}
+              isUsersListOpen={isUsersListOpen}
+              isChatOpen={isChatOpen}
+            />
           )}
-        </div>
-        <Navbar addUser={addUser} toggleDebugMode={toggleDebugMode} />
-      </main>
+        </main>
+        <Navbar
+          addUser={addUser}
+          toggleDebugMode={toggleDebugMode}
+          toggleUserList={toggleUserList}
+          toggleChat={toggleChat}
+        />
+      </div>
       {/*  eslint-disable-next-line @next/next/no-img-element */}
       <img
         src="/black-texture-alt.jpeg"
         alt="background"
         className="absolute inset-0 h-screen w-screen object-cover"
-        style={{ filter: "brightness(1.25)", zIndex: -1 }}
+        style={{ filter: "brightness(1.25) ", zIndex: -1 }}
       />
     </>
+  );
+};
+
+const messagesList = ["Hello", "How are you?", "I am fine", "Thank you", "Bye"];
+
+const Menu = ({
+  users,
+  isUsersListOpen,
+  isChatOpen,
+}: {
+  users: User[];
+  isUsersListOpen: boolean;
+  isChatOpen: boolean;
+}) => {
+  const [messages] = useState(
+    users.map((user) => ({
+      user: user.name,
+      text: messagesList[
+        Math.floor(Math.random() * messagesList.length)
+      ] as string,
+    }))
+  );
+
+  return (
+    <aside
+      className="grid h-full flex-col gap-4 px-4 pt-4 pb-2"
+      style={{
+        gridTemplateRows: isUsersListOpen && isChatOpen ? "1fr 1fr" : "1fr",
+        width: 500,
+      }}
+    >
+      {isUsersListOpen && (
+        <div className=" overflow-y-scroll rounded-lg border border-gray-700 bg-gray-800 text-white">
+          <header className="flex items-center justify-between border-b border-gray-700 p-2">
+            <h3>Users</h3>
+            <FiMoreVertical />
+          </header>
+          <div className="flex flex-col  p-2">
+            {users.map((user) => (
+              <div
+                key={user.name}
+                className="flex items-center justify-between p-2"
+              >
+                <div className="flex items-center">
+                  <span>{user.name}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {isChatOpen && (
+        <div className=" overflow-y-scroll rounded-lg border border-gray-700 bg-gray-800 text-white">
+          <header className="flex items-center justify-between border-b border-gray-700 p-2">
+            <h3>Chat</h3>
+            <FiMoreVertical />
+          </header>
+          <div className="flex flex-col overflow-y-auto p-2">
+            {messages.map((message) => (
+              <div
+                key={message.user}
+                className="flex items-center justify-between p-2"
+              >
+                <div className="flex items-center">
+                  <span className="text-medium mr-2 text-gray-400">
+                    {message.user}:{" "}
+                  </span>
+                  <span>{message.text}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </aside>
   );
 };
 
@@ -123,9 +244,13 @@ const Video = ({
 const Navbar = ({
   addUser,
   toggleDebugMode,
+  toggleUserList,
+  toggleChat,
 }: {
   addUser: () => void;
   toggleDebugMode: () => void;
+  toggleUserList: () => void;
+  toggleChat: () => void;
 }) => {
   return (
     <nav className="grid grid-cols-1 items-center justify-items-center gap-4 py-2 px-4 sm:grid-cols-2 md:grid-cols-3">
@@ -160,10 +285,10 @@ const Navbar = ({
         </BaseButton>
       </div>
       <div className="flex gap-2 md:justify-self-end ">
-        <BaseButton>
+        <BaseButton onClick={toggleUserList}>
           <FiUsers />
         </BaseButton>
-        <BaseButton>
+        <BaseButton onClick={toggleChat}>
           <FiMessageSquare />
         </BaseButton>
         <BaseButton
@@ -171,7 +296,7 @@ const Navbar = ({
           className="tet flex gap-2 border-yellow-600 bg-yellow-600 text-sm hover:border-yellow-700 hover:bg-yellow-700"
         >
           <FiSliders />
-          Toggle Hitboxes
+          Hitboxes
         </BaseButton>
       </div>
     </nav>

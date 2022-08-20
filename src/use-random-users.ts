@@ -3,7 +3,7 @@ import Users from "../public/Users.json";
 
 let USERS_GENERATED = false;
 
-type User = {
+export type User = {
   name: string;
 };
 
