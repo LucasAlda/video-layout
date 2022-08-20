@@ -26,8 +26,7 @@ const Home: NextPage = () => {
   const [debugMode, setDebugMode] = useState(false);
   const videoContainer = useRef<HTMLDivElement>(null);
 
-  const { layout, videoWidth, isLayoutValid, invalidate, calculateLayout } =
-    useBestLayout();
+  const { layout, calculateLayout } = useBestLayout();
 
   const toggleDebugMode = () => setDebugMode((prev) => !prev);
 
@@ -46,15 +45,37 @@ const Home: NextPage = () => {
 
   const toggleUserList = () => {
     setIsUserListOpen((prev) => !prev);
-    if (!isChatOpen) {
-      invalidate();
+    if (isChatOpen) return;
+
+    const sizes = videoContainer.current?.getBoundingClientRect();
+    if (sizes) {
+      console.log({
+        actual: sizes.width,
+        futuro: sizes.width + (isUsersListOpen ? 300 : -300),
+      });
+      calculateLayout({
+        width: sizes.width + (isUsersListOpen ? 300 : -300),
+        height: sizes.height,
+        numOfVideos: users.length,
+      });
     }
   };
 
   const toggleChat = () => {
     setIsChatOpen((prev) => !prev);
-    if (!isUsersListOpen) {
-      invalidate();
+    if (isUsersListOpen) return;
+
+    const sizes = videoContainer.current?.getBoundingClientRect();
+    if (sizes) {
+      console.log({
+        actual: sizes.width,
+        futuro: sizes.width + (isChatOpen ? 300 : -300),
+      });
+      calculateLayout({
+        width: sizes.width + (isChatOpen ? 300 : -300),
+        height: sizes.height,
+        numOfVideos: users.length,
+      });
     }
   };
 
@@ -73,6 +94,8 @@ const Home: NextPage = () => {
     return () => observer.disconnect();
   }, [users.length, calculateLayout]);
 
+  console.log(layout);
+
   return (
     <>
       <Head>
@@ -88,22 +111,26 @@ const Home: NextPage = () => {
             ref={videoContainer}
             style={{ border: debugMode ? "1px solid red" : "none" }}
           >
-            {layout && videoWidth && (
-              <div
-                className="absolute flex flex-wrap items-center justify-center"
-                style={{
-                  width: videoWidth * layout.cols,
-                }}
-              >
+            {layout && (
+              // <div className="absolute flex flex-wrap items-center justify-center">
+              <div className="flex h-full w-full flex-wrap content-center items-center justify-center">
                 {users.map((user) => (
                   <Video
                     onClick={() => removeUser(user.name)}
                     user={user}
                     key={user.name}
                     style={{
-                      display: isLayoutValid ? "block" : "none",
-                      width: videoWidth ?? 0.5,
+                      // display: isLayoutValid ? "block" : "none",
                       border: debugMode ? "1px solid green" : "none",
+                      ...(layout.limitation === "width"
+                        ? {
+                            width: `${100 / layout.cols}%`,
+                            maxHeight: `${100 / layout.rows}%`,
+                          }
+                        : {
+                            height: `${100 / layout.rows}%`,
+                            maxWidth: `${100 / layout.cols}%`,
+                          }),
                     }}
                   />
                 ))}
@@ -161,7 +188,7 @@ const Menu = ({
       className="grid h-full flex-col gap-4 px-4 pt-4 pb-2"
       style={{
         gridTemplateRows: isUsersListOpen && isChatOpen ? "1fr 1fr" : "1fr",
-        width: 500,
+        width: 300,
       }}
     >
       {isUsersListOpen && (
